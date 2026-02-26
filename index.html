@@ -1,787 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GESTURAL — Hand Shape Control</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
-
-  :root {
-    --neon-cyan: #00ffff;
-    --neon-magenta: #ff00ff;
-    --neon-green: #39ff14;
-    --neon-orange: #ff6600;
-    --bg: #020408;
-    --panel: rgba(0,255,255,0.04);
-    --border: rgba(0,255,255,0.2);
-  }
-
-  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-
-  body {
-    background: var(--bg);
-    color: var(--neon-cyan);
-    font-family: 'Share Tech Mono', monospace;
-    overflow: hidden;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
-  }
-
-  #video-bg {
-    position: fixed; inset: 0;
-    width: 100%; height: 100%;
-    object-fit: cover;
-    opacity: 0;
-    transition: opacity 0.5s;
-    pointer-events: none;
-    z-index: 0;
-  }
-  body.show-video #video-bg { opacity: 0.18; }
-
-  #canvas {
-    position: fixed; inset: 0;
-    width: 100%; height: 100%;
-    z-index: 1;
-    pointer-events: none;
-  }
-
-  /* HUD overlays */
-  #hud-top {
-    position: fixed; top: 0; left: 0; right: 0;
-    z-index: 10;
-    padding: 12px 16px 8px;
-    background: linear-gradient(to bottom, rgba(2,4,8,0.9) 60%, transparent);
-    display: flex; align-items: center; justify-content: space-between;
-  }
-
-  .logo {
-    font-family: 'Orbitron', monospace;
-    font-weight: 900;
-    font-size: clamp(14px, 4vw, 20px);
-    letter-spacing: 0.3em;
-    color: var(--neon-cyan);
-    text-shadow: 0 0 20px var(--neon-cyan), 0 0 40px var(--neon-cyan);
-  }
-
-  #status-bar {
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    color: rgba(0,255,255,0.5);
-    text-align: right;
-    line-height: 1.6;
-  }
-  #status-bar span { display: block; }
-  #status-bar .active { color: var(--neon-green); }
-  #status-bar .warn { color: var(--neon-orange); }
-
-  /* Bottom controls */
-  #hud-bottom {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    z-index: 10;
-    padding: 8px 12px 16px;
-    background: linear-gradient(to top, rgba(2,4,8,0.95) 60%, transparent);
-  }
-
-  .control-row {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 8px;
-    justify-content: center;
-  }
-
-  .btn {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: clamp(9px, 2.5vw, 12px);
-    letter-spacing: 0.08em;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: rgba(0,255,255,0.7);
-    padding: 8px 10px;
-    cursor: pointer;
-    transition: all 0.2s;
-    flex: 1;
-    text-align: center;
-    text-transform: uppercase;
-    position: relative;
-    overflow: hidden;
-    -webkit-appearance: none;
-    border-radius: 2px;
-    max-width: 120px;
-  }
-  .btn::before {
-    content:'';
-    position:absolute; top:0; left:-100%; width:100%; height:100%;
-    background: linear-gradient(90deg, transparent, rgba(0,255,255,0.1), transparent);
-    transition: left 0.3s;
-  }
-  .btn:hover::before, .btn:active::before { left: 100%; }
-  .btn.active {
-    border-color: var(--neon-cyan);
-    color: var(--neon-cyan);
-    background: rgba(0,255,255,0.1);
-    box-shadow: 0 0 12px rgba(0,255,255,0.3), inset 0 0 12px rgba(0,255,255,0.05);
-  }
-  .btn.cam-btn { color: rgba(255,102,0,0.7); border-color: rgba(255,102,0,0.3); }
-  .btn.cam-btn.active { color: var(--neon-orange); border-color: var(--neon-orange); background: rgba(255,102,0,0.1); box-shadow: 0 0 12px rgba(255,102,0,0.3); }
-
-  .section-label {
-    font-size: 9px;
-    letter-spacing: 0.2em;
-    color: rgba(0,255,255,0.3);
-    text-align: center;
-    margin-bottom: 4px;
-    text-transform: uppercase;
-  }
-
-  /* Gesture legend */
-  #gesture-legend {
-    position: fixed; left: 12px; top: 50%;
-    transform: translateY(-50%);
-    z-index: 10;
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    line-height: 2;
-    color: rgba(0,255,255,0.35);
-    pointer-events: none;
-  }
-  #gesture-legend .gl-item { display: flex; align-items: center; gap: 6px; }
-  #gesture-legend .gl-icon { color: var(--neon-magenta); font-size: 12px; }
-
-  /* Active gesture flash */
-  #gesture-flash {
-    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-    z-index: 20;
-    font-family: 'Orbitron', monospace;
-    font-size: clamp(16px, 5vw, 28px);
-    font-weight: 700;
-    color: var(--neon-magenta);
-    text-shadow: 0 0 30px var(--neon-magenta);
-    letter-spacing: 0.3em;
-    opacity: 0;
-    transition: opacity 0.1s;
-    pointer-events: none;
-  }
-
-  /* Loading overlay */
-  #loading {
-    position: fixed; inset: 0;
-    background: var(--bg);
-    z-index: 100;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 20px;
-  }
-  #loading .load-title {
-    font-family: 'Orbitron', monospace;
-    font-weight: 900;
-    font-size: clamp(20px, 6vw, 36px);
-    letter-spacing: 0.4em;
-    color: var(--neon-cyan);
-    text-shadow: 0 0 40px var(--neon-cyan);
-    animation: pulse 1.5s infinite;
-  }
-  #loading .load-sub {
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    color: rgba(0,255,255,0.5);
-  }
-  #loading .load-bar {
-    width: 200px; height: 2px;
-    background: rgba(0,255,255,0.1);
-    position: relative; overflow: hidden;
-  }
-  #loading .load-bar::after {
-    content:'';
-    position:absolute; left:-60%; width:60%; height:100%;
-    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
-    animation: scan 1s infinite linear;
-  }
-  @keyframes scan { to { left: 160%; } }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
-
-  /* scan lines */
-  body::after {
-    content:'';
-    position:fixed; inset:0; z-index:5; pointer-events:none;
-    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
-  }
-
-  /* Corner decorations */
-  .corner {
-    position: fixed; z-index: 9; pointer-events: none;
-    width: 30px; height: 30px;
-  }
-  .corner-tl { top:8px; left:8px; border-top:1px solid var(--neon-cyan); border-left:1px solid var(--neon-cyan); opacity:0.4; }
-  .corner-tr { top:8px; right:8px; border-top:1px solid var(--neon-cyan); border-right:1px solid var(--neon-cyan); opacity:0.4; }
-  .corner-bl { bottom:8px; left:8px; border-bottom:1px solid var(--neon-cyan); border-left:1px solid var(--neon-cyan); opacity:0.4; }
-  .corner-br { bottom:8px; right:8px; border-bottom:1px solid var(--neon-cyan); border-right:1px solid var(--neon-cyan); opacity:0.4; }
-
-  #start-btn {
-    font-family: 'Orbitron', monospace;
-    font-size: clamp(13px, 4vw, 16px);
-    font-weight: 700;
-    letter-spacing: 0.3em;
-    border: 1px solid var(--neon-cyan);
-    background: transparent;
-    color: var(--neon-cyan);
-    padding: 14px 32px;
-    cursor: pointer;
-    text-transform: uppercase;
-    box-shadow: 0 0 20px rgba(0,255,255,0.3);
-    animation: pulse 2s infinite;
-    -webkit-appearance: none;
-    border-radius: 2px;
-  }
-
-  #permission-msg {
-    font-size: 11px;
-    color: rgba(0,255,255,0.4);
-    letter-spacing: 0.1em;
-    max-width: 280px;
-    text-align: center;
-    line-height: 1.8;
-  }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GESTURAL — Hand Shape Control</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="loading">
-  <div class="load-title">GESTURAL</div>
-  <div class="load-sub">INITIALIZING HAND TRACKING SYSTEM</div>
-  <div class="load-bar"></div>
-  <div id="load-status" style="font-size:10px;color:rgba(0,255,255,0.4);letter-spacing:0.1em;margin-top:8px;">LOADING MEDIAPIPE...</div>
-  <button id="start-btn" style="display:none">ACTIVATE CAMERA</button>
-  <div id="permission-msg" style="display:none">Grant camera access to enable gesture control. Your video never leaves your device.</div>
-</div>
-
-<div class="corner corner-tl"></div>
-<div class="corner corner-tr"></div>
-<div class="corner corner-bl"></div>
-<div class="corner corner-br"></div>
-
-<video id="video-bg" autoplay muted playsinline></video>
-<canvas id="canvas"></canvas>
-
-<div id="hud-top">
-  <div class="logo">GESTURAL</div>
-  <div id="status-bar">
-    <span id="s-tracking">TRACKING: <span class="warn">INACTIVE</span></span>
-    <span id="s-gesture">GESTURE: <span>—</span></span>
-    <span id="s-fps">FPS: <span>—</span></span>
+  <!-- LOADING SCREEN -->
+  <div id="loading">
+    <div class="load-title">GESTURAL</div>
+    <div class="load-sub">INITIALIZING HAND TRACKING SYSTEM</div>
+    <div class="load-bar"><div class="load-bar-inner"></div></div>
+    <div id="load-status">LOADING MEDIAPIPE...</div>
+    <button id="start-btn" style="display:none">⚡ ACTIVATE CAMERA</button>
+    <p id="permission-msg" style="display:none">
+      Grant camera access to enable gesture control.<br>Your video never leaves your device.
+    </p>
   </div>
-</div>
 
-<div id="gesture-legend">
-  <div class="gl-item"><span class="gl-icon">✋</span> MOVE = TRANSLATE</div>
-  <div class="gl-item"><span class="gl-icon">🤏</span> PINCH = RESIZE</div>
-  <div class="gl-item"><span class="gl-icon">🔄</span> TILT = ROTATE</div>
-  <div class="gl-item"><span class="gl-icon">👐</span> OPEN = RESET</div>
-  <div class="gl-item"><span class="gl-icon">👉</span> SWIPE = SHAPE</div>
-</div>
+  <!-- CORNER DECO -->
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
 
-<div id="gesture-flash">RESET</div>
+  <!-- CAMERA FEED -->
+  <video id="video-bg" autoplay muted playsinline></video>
 
-<div id="hud-bottom">
-  <div class="section-label">— TRACKING MODE —</div>
-  <div class="control-row">
-    <button class="btn active" id="btn-direct" onclick="setMode('direct')">DIRECT</button>
-    <button class="btn" id="btn-mirror" onclick="setMode('mirror')">MIRROR</button>
-    <button class="btn" id="btn-mflip" onclick="setMode('mirror-flip')">MIR+FLIP</button>
+  <!-- MAIN CANVAS -->
+  <canvas id="canvas"></canvas>
+
+  <!-- TOP HUD -->
+  <div id="hud-top">
+    <div class="logo">GESTURAL</div>
+    <div id="status-bar">
+      <span id="s-tracking">TRACKING: <em class="warn">INACTIVE</em></span>
+      <span id="s-gesture">GESTURE: <em>—</em></span>
+      <span id="s-fps">FPS: <em>—</em></span>
+    </div>
   </div>
-  <div class="section-label">— CAMERA & DISPLAY —</div>
-  <div class="control-row">
-    <button class="btn cam-btn" id="btn-front" onclick="switchCamera('user')">FRONT CAM</button>
-    <button class="btn cam-btn" id="btn-back" onclick="switchCamera('environment')">BACK CAM</button>
-    <button class="btn cam-btn" id="btn-feed" onclick="toggleFeed()">FEED: OFF</button>
-    <button class="btn cam-btn" id="btn-shape" onclick="cycleShape()">SHAPE: ◆</button>
+
+  <!-- GESTURE LEGEND -->
+  <div id="gesture-legend">
+    <div class="gl-item"><span class="gl-icon">☝</span> INDEX TIP = AIM</div>
+    <div class="gl-item"><span class="gl-icon">✌</span> V-SPREAD = GROW</div>
+    <div class="gl-item"><span class="gl-icon">🤏</span> PINCH = SHRINK</div>
+    <div class="gl-item"><span class="gl-icon">🔄</span> TILT WRIST = ROTATE</div>
+    <div class="gl-item"><span class="gl-icon">👐</span> OPEN PALM = RESET</div>
   </div>
-</div>
 
-<!-- MediaPipe -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-
-<script>
-// ─── State ───────────────────────────────────────────────────────────────────
-let mode = 'direct';           // 'direct' | 'mirror' | 'mirror-flip'
-let facingMode = 'user';
-let showFeed = false;
-let shapeIndex = 0;
-const SHAPES = ['diamond','circle','hexagon','triangle','star'];
-const SHAPE_ICONS = ['◆','●','⬡','▲','★'];
-
-// Shape state
-let shape = {
-  x: null, y: null,
-  targetX: null, targetY: null,
-  scale: 1, targetScale: 1,
-  rotation: 0, targetRotation: 0,
-  baseSize: null
-};
-
-// Hand tracking state
-let handVisible = false;
-let lastHandX = null, lastHandY = null;
-let pinchActive = false;
-let pinchStartDist = null;
-let pinchStartScale = null;
-let rotationStartAngle = null;
-let rotationStartShape = null;
-let swipeStartX = null;
-let swipeStartTime = null;
-let lastGesture = '';
-let gestureFlashTimer = null;
-
-// Trails
-const trails = [];
-const MAX_TRAILS = 25;
-
-// FPS
-let fps = 0, frameCount = 0, fpsTimer = 0;
-
-// Canvas
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-
-// ─── Setup ────────────────────────────────────────────────────────────────────
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  shape.baseSize = Math.min(canvas.width, canvas.height) * 0.13;
-  if (!shape.x) {
-    shape.x = shape.targetX = canvas.width / 2;
-    shape.y = shape.targetY = canvas.height / 2;
-  }
-}
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-
-// ─── Mode switching ───────────────────────────────────────────────────────────
-function setMode(m) {
-  mode = m;
-  ['direct','mirror','mirror-flip'].forEach(id => {
-    const key = id === 'mirror-flip' ? 'mflip' : id;
-    document.getElementById('btn-' + key).classList.toggle('active', m === id);
-  });
-}
-
-function switchCamera(facing) {
-  facingMode = facing;
-  document.getElementById('btn-front').classList.toggle('active', facing === 'user');
-  document.getElementById('btn-back').classList.toggle('active', facing === 'environment');
-  startCamera();
-}
-
-function toggleFeed() {
-  showFeed = !showFeed;
-  document.getElementById('btn-feed').textContent = showFeed ? 'FEED: ON' : 'FEED: OFF';
-  document.getElementById('btn-feed').classList.toggle('active', showFeed);
-  document.body.classList.toggle('show-video', showFeed);
-}
-
-function cycleShape() {
-  shapeIndex = (shapeIndex + 1) % SHAPES.length;
-  document.getElementById('btn-shape').textContent = 'SHAPE: ' + SHAPE_ICONS[shapeIndex];
-  flashGesture(SHAPES[shapeIndex].toUpperCase());
-}
-
-// ─── Hand coordinate mapping ──────────────────────────────────────────────────
-function mapCoords(nx, ny) {
-  const W = canvas.width, H = canvas.height;
-  let x, y;
-  if (mode === 'direct') {
-    x = nx * W;
-    y = ny * H;
-  } else {
-    // mirror: invert X
-    x = (1 - nx) * W;
-    y = ny * H;
-  }
-  if (mode === 'mirror-flip') {
-    // additionally flip Y
-    y = (1 - ny) * H;
-  }
-  return { x, y };
-}
-
-// ─── Gesture detection ────────────────────────────────────────────────────────
-function dist2D(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function angle2D(a, b) {
-  return Math.atan2(b.y - a.y, b.x - a.x);
-}
-
-function isFingerExtended(lm, tip, pip) {
-  return lm[tip].y < lm[pip].y;
-}
-
-function countExtended(lm) {
-  const fingers = [
-    [8, 6], [12, 10], [16, 14], [20, 18]
-  ];
-  let count = 0;
-  fingers.forEach(([tip, pip]) => {
-    if (lm[tip].y < lm[pip].y) count++;
-  });
-  // thumb: compare x
-  const thumbUp = facingMode === 'user'
-    ? lm[4].x < lm[3].x
-    : lm[4].x > lm[3].x;
-  if (thumbUp) count++;
-  return count;
-}
-
-let resetCooldown = 0;
-
-function processHand(lm) {
-  handVisible = true;
-
-  // Palm center (landmark 9)
-  const palm = mapCoords(lm[9].x, lm[9].y);
-  shape.targetX = palm.x;
-  shape.targetY = palm.y;
-
-  // Pinch: thumb(4) + index(8)
-  const thumbTip = lm[4], indexTip = lm[8];
-  const pinchDist = dist2D(thumbTip, indexTip);
-  const PINCH_THRESH = 0.055;
-  const currentlyPinching = pinchDist < PINCH_THRESH;
-
-  if (currentlyPinching && !pinchActive) {
-    pinchActive = true;
-    pinchStartDist = pinchDist;
-    pinchStartScale = shape.targetScale;
-    // also start rotation tracking
-    const wrist = lm[0], middle = lm[12];
-    rotationStartAngle = angle2D(wrist, middle);
-    rotationStartShape = shape.targetRotation;
-    swipeStartX = palm.x;
-    swipeStartTime = Date.now();
-    setGestureStatus('PINCH');
-  } else if (!currentlyPinching && pinchActive) {
-    pinchActive = false;
-    // check swipe
-    if (swipeStartX !== null && Date.now() - swipeStartTime < 600) {
-      const dx = palm.x - swipeStartX;
-      if (Math.abs(dx) > canvas.width * 0.18) {
-        shapeIndex = (shapeIndex + (dx > 0 ? 1 : -1) + SHAPES.length) % SHAPES.length;
-        document.getElementById('btn-shape').textContent = 'SHAPE: ' + SHAPE_ICONS[shapeIndex];
-        flashGesture('SHAPE: ' + SHAPES[shapeIndex].toUpperCase());
-      }
-    }
-    swipeStartX = null;
-  }
-
-  if (pinchActive) {
-    // Scale
-    const scaleFactor = pinchStartDist > 0 ? pinchDist / pinchStartDist : 1;
-    shape.targetScale = Math.max(0.3, Math.min(4, pinchStartScale * scaleFactor));
-    // Rotation from wrist-to-middle angle
-    const wrist = lm[0], middle = lm[12];
-    const currentAngle = angle2D(wrist, middle);
-    const delta = currentAngle - rotationStartAngle;
-    shape.targetRotation = rotationStartShape + delta;
-  }
-
-  // Open palm reset
-  const extended = countExtended(lm);
-  if (extended >= 4 && resetCooldown <= 0) {
-    shape.targetScale = 1;
-    shape.targetRotation = 0;
-    shape.targetX = canvas.width / 2;
-    shape.targetY = canvas.height / 2;
-    flashGesture('RESET');
-    resetCooldown = 60;
-    setGestureStatus('OPEN PALM');
-  } else if (pinchActive) {
-    // already set
-  } else if (extended <= 1) {
-    setGestureStatus('FIST');
-  } else {
-    setGestureStatus('TRACKING');
-  }
-
-  if (resetCooldown > 0) resetCooldown--;
-
-  // Trail
-  trails.push({ x: palm.x, y: palm.y, age: 0 });
-  if (trails.length > MAX_TRAILS) trails.shift();
-}
-
-function setGestureStatus(g) {
-  if (g !== lastGesture) {
-    lastGesture = g;
-    document.getElementById('s-gesture').innerHTML = `GESTURE: <span class="active">${g}</span>`;
-  }
-}
-
-function flashGesture(text) {
-  const el = document.getElementById('gesture-flash');
-  el.textContent = text;
-  el.style.opacity = '1';
-  clearTimeout(gestureFlashTimer);
-  gestureFlashTimer = setTimeout(() => { el.style.opacity = '0'; }, 900);
-}
-
-// ─── Drawing ──────────────────────────────────────────────────────────────────
-function lerp(a, b, t) { return a + (b - a) * t; }
-
-const EASING = 0.12;
-
-function drawShape(x, y, size, rotation, color1, color2) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rotation);
-
-  const type = SHAPES[shapeIndex];
-  const glow = ctx.createRadialGradient(0, 0, size * 0.1, 0, 0, size);
-  glow.addColorStop(0, color2 + 'cc');
-  glow.addColorStop(1, color1 + '00');
-
-  // Outer glow
-  ctx.shadowColor = color1;
-  ctx.shadowBlur = 30;
-  ctx.strokeStyle = color1;
-  ctx.lineWidth = 2;
-  ctx.fillStyle = color2 + '22';
-
-  ctx.beginPath();
-  if (type === 'circle') {
-    ctx.arc(0, 0, size, 0, Math.PI * 2);
-  } else if (type === 'diamond') {
-    ctx.moveTo(0, -size);
-    ctx.lineTo(size * 0.65, 0);
-    ctx.lineTo(0, size);
-    ctx.lineTo(-size * 0.65, 0);
-    ctx.closePath();
-  } else if (type === 'hexagon') {
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
-      ctx.lineTo(Math.cos(a) * size, Math.sin(a) * size);
-    }
-    ctx.closePath();
-  } else if (type === 'triangle') {
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
-      ctx.lineTo(Math.cos(a) * size, Math.sin(a) * size);
-    }
-    ctx.closePath();
-  } else if (type === 'star') {
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-      const r = i % 2 === 0 ? size : size * 0.45;
-      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-    }
-    ctx.closePath();
-  }
-
-  ctx.fill();
-  ctx.stroke();
-
-  // Inner highlight
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = color2 + 'aa';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Center dot
-  ctx.shadowColor = color1;
-  ctx.shadowBlur = 15;
-  ctx.fillStyle = color1;
-  ctx.beginPath();
-  ctx.arc(0, 0, 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-function drawTrails() {
-  for (let i = trails.length - 1; i >= 0; i--) {
-    const t = trails[i];
-    const alpha = (1 - t.age / MAX_TRAILS) * 0.4;
-    const r = 3 * (1 - t.age / MAX_TRAILS);
-    ctx.beginPath();
-    ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(0,255,255,${alpha})`;
-    ctx.shadowColor = 'cyan';
-    ctx.shadowBlur = 6;
-    ctx.fill();
-    t.age++;
-  }
-}
-
-function drawHUDGrid() {
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,255,255,0.03)';
-  ctx.lineWidth = 1;
-  const step = 60;
-  for (let x = 0; x < canvas.width; x += step) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-  }
-  for (let y = 0; y < canvas.height; y += step) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawCrosshair(x, y) {
-  const size = 18;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,255,255,0.5)';
-  ctx.lineWidth = 1;
-  ctx.shadowColor = 'cyan';
-  ctx.shadowBlur = 8;
-  ctx.beginPath();
-  ctx.moveTo(x - size, y); ctx.lineTo(x + size, y);
-  ctx.moveTo(x, y - size); ctx.lineTo(x, y + size);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(x, y, size * 0.6, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
-}
-
-let lastTime = 0;
-function render(now) {
-  requestAnimationFrame(render);
-
-  const dt = now - lastTime;
-  lastTime = now;
-
-  // FPS
-  frameCount++;
-  fpsTimer += dt;
-  if (fpsTimer > 500) {
-    fps = Math.round(frameCount * 1000 / fpsTimer);
-    frameCount = 0; fpsTimer = 0;
-    document.getElementById('s-fps').innerHTML = `FPS: <span class="${fps > 25 ? 'active' : 'warn'}">${fps}</span>`;
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawHUDGrid();
-
-  // Easing
-  shape.x = lerp(shape.x || canvas.width/2, shape.targetX || canvas.width/2, EASING);
-  shape.y = lerp(shape.y || canvas.height/2, shape.targetY || canvas.height/2, EASING);
-  shape.scale = lerp(shape.scale, shape.targetScale, EASING);
-  shape.rotation = lerp(shape.rotation, shape.targetRotation, EASING * 1.5);
-
-  // Age trails
-  drawTrails();
-
-  if (handVisible) {
-    drawCrosshair(shape.targetX, shape.targetY);
-  }
-
-  const sz = shape.baseSize * shape.scale;
-  drawShape(shape.x, shape.y, sz, shape.rotation, '#00ffff', '#ff00ff');
-
-  // Mode indicator
-  const modeColors = { 'direct': '#39ff14', 'mirror': '#00ffff', 'mirror-flip': '#ff00ff' };
-  const modeLabels = { 'direct': 'DIRECT', 'mirror': 'MIRROR', 'mirror-flip': 'MIR+FLIP' };
-  ctx.save();
-  ctx.font = '10px "Share Tech Mono"';
-  ctx.fillStyle = modeColors[mode] + 'aa';
-  ctx.textAlign = 'right';
-  ctx.fillText('MODE: ' + modeLabels[mode], canvas.width - 16, canvas.height - 120);
-  ctx.restore();
-
-  // No hand indicator
-  if (!handVisible) {
-    ctx.save();
-    ctx.font = '11px "Share Tech Mono"';
-    ctx.fillStyle = 'rgba(255,102,0,0.5)';
-    ctx.textAlign = 'center';
-    ctx.fillText('[ SHOW HAND TO CAMERA ]', canvas.width / 2, canvas.height / 2 + shape.baseSize * 1.8);
-    ctx.restore();
-  }
-
-  handVisible = false; // reset each frame; set true if mediapipe fires
-}
-
-requestAnimationFrame(render);
-
-// ─── MediaPipe setup ──────────────────────────────────────────────────────────
-let mpCamera = null;
-let videoEl = null;
-
-const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
-});
-
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 0,
-  minDetectionConfidence: 0.7,
-  minTrackingConfidence: 0.6
-});
-
-hands.onResults(results => {
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    const lm = results.multiHandLandmarks[0];
-    processHand(lm);
-    document.getElementById('s-tracking').innerHTML = 'TRACKING: <span class="active">ACTIVE</span>';
-  } else {
-    document.getElementById('s-tracking').innerHTML = 'TRACKING: <span class="warn">SEARCHING</span>';
-    document.getElementById('s-gesture').innerHTML = 'GESTURE: <span>—</span>';
-    trails.forEach(t => t.age++);
-  }
-});
-
-async function startCamera() {
-  if (mpCamera) {
-    mpCamera.stop();
-    mpCamera = null;
-  }
-
-  const constraints = {
-    video: {
-      facingMode,
-      width: { ideal: 640 },
-      height: { ideal: 480 }
-    }
-  };
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    videoEl = document.getElementById('video-bg');
-    videoEl.srcObject = stream;
-
-    // If facingMode is user (front cam), mirror the video
-    videoEl.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'none';
-
-    mpCamera = new Camera(videoEl, {
-      onFrame: async () => {
-        await hands.send({ image: videoEl });
-      },
-      width: 640,
-      height: 480
-    });
-    mpCamera.start();
-
-    document.getElementById('loading').style.display = 'none';
-  } catch (e) {
-    document.getElementById('load-status').textContent = 'ERROR: ' + e.message;
-  }
-}
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-hands.initialize().then(() => {
-  document.getElementById('load-status').textContent = 'READY — TAP TO ACTIVATE';
-  document.getElementById('start-btn').style.display = 'block';
-  document.getElementById('permission-msg').style.display = 'block';
-}).catch(e => {
-  document.getElementById('load-status').textContent = 'LOAD ERROR: ' + e.message;
-});
-
-document.getElementById('start-btn').addEventListener('click', () => {
-  startCamera();
-});
-</script>
+  <!-- GESTURE FLASH -->
+  <div id="gesture-flash"></div>
+
+  <!-- PINCH METER -->
+  <div id="pinch-meter">
+    <div class="pm-label">MAX</div>
+    <div class="pm-bar-wrap"><div id="pm-bar"></div></div>
+    <div class="pm-label">MIN</div>
+  </div>
+
+  <!-- BOTTOM HUD -->
+  <div id="hud-bottom">
+    <div class="section-label">— TRACKING MODE —</div>
+    <div class="control-row">
+      <button class="btn mode-btn active" id="btn-direct"  onclick="setMode('direct')">DIRECT</button>
+      <button class="btn mode-btn"        id="btn-mirror"  onclick="setMode('mirror')">MIRROR</button>
+      <button class="btn mode-btn"        id="btn-mflip"   onclick="setMode('mirror-flip')">MIR+FLIP</button>
+    </div>
+    <div class="section-label">— CAMERA & SHAPE —</div>
+    <div class="control-row">
+      <button class="btn cam-btn active"  id="btn-front"   onclick="switchCamera('user')">FRONT</button>
+      <button class="btn cam-btn"         id="btn-back"    onclick="switchCamera('environment')">BACK</button>
+      <button class="btn cam-btn"         id="btn-feed"    onclick="toggleFeed()">FEED:OFF</button>
+      <button class="btn cam-btn"         id="btn-shape"   onclick="cycleShape()">SHAPE:◆</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="app.js"></script>
 </body>
 </html>
